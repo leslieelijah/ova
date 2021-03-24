@@ -9,9 +9,6 @@ import (
 )
 
 func main() {
-
-	// argparse.Store("--stream_vmdk")
-
 	parser.add_argument('--stream_vmdk',
                         dest='stream_vmdk',
                         argparse.StoreTrue,
@@ -219,15 +216,45 @@ func callback(p *argparse.Parser, ns *argparse.Namespace, leftovers []string, er
 }
 
 func sha256(path string) string {
-	return path
+	m = hashlib.sha256()
+    open(path, 'rb') as f:
+        while True:
+            data = f.read(65536)
+            if not data:
+                break
+            m.update(data)
+    return m.hexdigest()
 }
 
 func createOva(ovaPath string, ovfPath string, ovaFiles string) string {
-	return ovaPath + ovfPath + ovaFiles
+	if ova_files is None:
+        args = [
+            'ovftool',
+            ovf_path,
+            ova_path
+        ]
+        print("image-build-ova: creating OVA from %s using ovftool" %
+              ovf_path)
+        subprocess.check_call(args)
+    else:
+        infile_paths = [ovf_path]
+        infile_paths.extend(ova_files)
+        print("image-build-ova: creating OVA using tar")
+        with open(ova_path, 'wb') as f:
+            with tarfile.open(fileobj=f, mode='w|') as tar:
+                for infile_path in infile_paths:
+                    tar.add(infile_path)
+
+    chksum_path = "%s.sha256" % ova_path
+    fmt.Println("image-build-ova: create ova checksum %s" % chksum_path)
+    with open(chksum_path, 'w') as f:
+        f.write(sha256(ova_path))
 }
 
 func createOvf(path string, data string, ovfTemplate string) string {
-	return path + data + ovfTemplate
+	fmt.Println("image-build-ova: create ovf %s" % path)
+    io.open(path, 'w', encoding='utf-8') as f:
+      f.write(Template(ovf_template).substitute(data))
 }
 
 func createOvaManifest(path string, infilePaths string) string {
@@ -235,9 +262,28 @@ func createOvaManifest(path string, infilePaths string) string {
 }
 
 func getVmdkFiles(inList string) string {
-	return inList
+	outlist = []
+    for f in inlist:
+        if f['name'].endswith('.vmdk'):
+            outlist.append(f)
+    return outlist
 }
 
 func streamOptimizeVmdkFiles(inList string) string {
-	return inList
+	for f in inlist:
+        infile = f['name']
+        outfile = infile.replace('.vmdk', '.ova.vmdk', 1)
+        if os.path.isfile(outfile):
+            os.remove(outfile)
+        args = [
+            'vmware-vdiskmanager',
+            '-r', infile,
+            '-t', '5',
+            outfile
+        ]
+        fmt.Println("image-build-ova: stream optimize %s --> %s (1-2 minutes)" %
+              (infile, outfile))
+        subprocess.check_call(args)
+        f['stream_name'] = outfile
+        f['stream_size'] = os.path.getsize(outfile)
 }
